@@ -294,6 +294,26 @@ const handleStatusChange = async (itemId, newStatus) => {
             </button>
             <img src={showImagePreview} alt="Preview" />
           </div>
+     //Toast Notification
+        // Tambah di dalam return(), sebelum closing div:
+{showToast && (
+  <div className={`fixed bottom-4 right-4 px-6 py-3 rounded-lg shadow-lg ${
+    showToast.type === 'success' ? 'bg-green-500 text-white' : 'bg-red-500 text-white'
+  }`}>
+    <div className="flex items-center gap-2">
+      {showToast.type === 'success' ? '✓' : '✗'}
+      <span>{showToast.message}</span>
+      <button 
+        onClick={() => setShowToast(null)}
+        className="ml-4 text-white hover:text-gray-200"
+      >
+        ✕
+      </button>
+    </div>
+  </div>
+)}
+
+
         </div>
       )}
 
