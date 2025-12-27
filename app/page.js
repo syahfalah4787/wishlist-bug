@@ -36,6 +36,30 @@ export default function HomePage() {
 
   const fileInputRef = useRef(null);
 
+  // Di useEffect, tambah:
+useEffect(() => {
+  const channel = supabase
+    .channel('items-changes')
+    .on('postgres_changes', 
+      { 
+        event: '*', 
+        schema: 'public', 
+        table: 'items' 
+      }, 
+      () => {
+        // Refresh data ketika ada perubahan
+        fetchData();
+        fetchChangelog();
+      }
+    )
+    .subscribe();
+
+  return () => {
+    supabase.removeChannel(channel);
+  };
+}, []);
+
+
   const fetchData = async () => {
     try {
       const [categoriesRes, itemsRes] = await Promise.all([
