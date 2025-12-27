@@ -23,6 +23,9 @@ export default function HomePage() {
   const [showImagePreview, setShowImagePreview] = useState(null);
   const [changelog, setChangelog] = useState('');
   const [showChangelog, setShowChangelog] = useState(false);
+  const [loadingChangelog, setLoadingChangelog] = useState(false);
+  const [showToast, setShowToast] = useState(null);
+  const [deletingItem, setDeletingItem] = useState(null);
   
   const [formData, setFormData] = useState({
     title: '',
@@ -54,21 +57,15 @@ export default function HomePage() {
 
   const fetchChangelog = async () => {
   try {
-    console.log('Fetching fresh changelog...');
+    setLoadingChangelog(true);
     
-    // Tambah timestamp untuk bypass cache
     const timestamp = Date.now();
     const response = await fetch(`/api/changelog?_=${timestamp}`, {
-      method: 'GET',
-      headers: {
-        'Cache-Control': 'no-cache, no-store, max-age=0',
-        'Pragma': 'no-cache'
-      },
-      cache: 'no-store' // Important!
+      cache: 'no-store',
+      headers: { 'Cache-Control': 'no-cache' }
     });
     
     const result = await response.json();
-    console.log('Changelog result:', result);
     
     if (result.data && result.data !== 'Belum ada changelog') {
       setChangelog(result.data);
@@ -76,16 +73,11 @@ export default function HomePage() {
       setChangelog('Belum ada changelog');
     }
     
-    // Set debug info
-    setDebugInfo({
-      ...result,
-      fetchTime: new Date().toISOString(),
-      itemCount: result.debug?.totalItems || 0
-    });
-    
   } catch (error) {
     console.error('Error fetching changelog:', error);
     setChangelog('Error loading changelog');
+  } finally {
+    setLoadingChangelog(false);
   }
 };
 
