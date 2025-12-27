@@ -53,14 +53,41 @@ export default function HomePage() {
   };
 
   const fetchChangelog = async () => {
-    try {
-      const response = await fetch('/api/changelog');
-      const data = await response.json();
-      setChangelog(data.data || '');
-    } catch (error) {
-      console.error('Error fetching changelog:', error);
+  try {
+    console.log('Fetching fresh changelog...');
+    
+    // Tambah timestamp untuk bypass cache
+    const timestamp = Date.now();
+    const response = await fetch(`/api/changelog?_=${timestamp}`, {
+      method: 'GET',
+      headers: {
+        'Cache-Control': 'no-cache, no-store, max-age=0',
+        'Pragma': 'no-cache'
+      },
+      cache: 'no-store' // Important!
+    });
+    
+    const result = await response.json();
+    console.log('Changelog result:', result);
+    
+    if (result.data && result.data !== 'Belum ada changelog') {
+      setChangelog(result.data);
+    } else {
+      setChangelog('Belum ada changelog');
     }
-  };
+    
+    // Set debug info
+    setDebugInfo({
+      ...result,
+      fetchTime: new Date().toISOString(),
+      itemCount: result.debug?.totalItems || 0
+    });
+    
+  } catch (error) {
+    console.error('Error fetching changelog:', error);
+    setChangelog('Error loading changelog');
+  }
+};
 
   useEffect(() => {
     fetchData();
