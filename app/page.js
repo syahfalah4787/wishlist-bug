@@ -147,32 +147,65 @@ export default function HomePage() {
     }
   };
 
-  const handleStatusChange = async (itemId, newStatus) => {
-    try {
-      await fetch(`/api/items/${itemId}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: newStatus })
-      });
-      
-      fetchData();
-      fetchChangelog();
-    } catch (error) {
-      console.error('Error updating status:', error);
-    }
-  };
-
-  const handleDeleteItem = async (itemId) => {
-    if (!confirm('Yakin ingin menghapus item ini?')) return;
+  // Hapus item
+const handleDeleteItem = async (itemId) => {
+  if (!confirm('Yakin ingin menghapus item ini?')) return;
+  
+  try {
+    // Tampilkan loading
+    setDeletingItem(itemId);
     
-    try {
-      await fetch(`/api/items/${itemId}`, { method: 'DELETE' });
-      fetchData();
-      fetchChangelog();
-    } catch (error) {
-      console.error('Error deleting item:', error);
+    await fetch(`/api/items/${itemId}`, {
+      method: 'DELETE',
+      headers: { 'Cache-Control': 'no-cache' }
+    });
+    
+    // Refresh SEMUA data
+    await Promise.all([
+      fetchData(),
+      fetchChangelog() // Pastikan changelog juga refresh
+    ]);
+    
+    // Show success message
+    setShowToast({
+      message: 'Item berhasil dihapus',
+      type: 'success'
+    });
+    
+  } catch (error) {
+    console.error('Error deleting item:', error);
+    setShowToast({
+      message: 'Gagal menghapus item',
+      type: 'error'
+    });
+  } finally {
+    setDeletingItem(null);
+  }
+};
+
+// Update status
+const handleStatusChange = async (itemId, newStatus) => {
+  try {
+    const response = await fetch(`/api/items/${itemId}`, {
+      method: 'PATCH',
+      headers: { 
+        'Content-Type': 'application/json',
+        'Cache-Control': 'no-cache'
+      },
+      body: JSON.stringify({ status: newStatus })
+    });
+    
+    if (response.ok) {
+      // Jika status berubah ke/from 'done', refresh changelog
+      await Promise.all([
+        fetchData(),
+        fetchChangelog() // Refresh changelog
+      ]);
     }
-  };
+  } catch (error) {
+    console.error('Error updating status:', error);
+  }
+};
 
   const handleDeleteCategory = async (categoryId) => {
     if (!confirm('Hapus kategori akan menghapus semua item di dalamnya. Yakin?')) return;
