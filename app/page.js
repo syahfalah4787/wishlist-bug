@@ -8,8 +8,6 @@ import {
   Download,
   Image as ImageIcon,
   Maximize2,
-  Bug,
-  RefreshCw,
   Plus
 } from 'lucide-react';
 import { useTheme } from './theme-provider';
@@ -36,30 +34,7 @@ export default function HomePage() {
 
   const fileInputRef = useRef(null);
 
-  // Di useEffect, tambah:
-useEffect(() => {
-  const channel = supabase
-    .channel('items-changes')
-    .on('postgres_changes', 
-      { 
-        event: '*', 
-        schema: 'public', 
-        table: 'items' 
-      }, 
-      () => {
-        // Refresh data ketika ada perubahan
-        fetchData();
-        fetchChangelog();
-      }
-    )
-    .subscribe();
-
-  return () => {
-    supabase.removeChannel(channel);
-  };
-}, []);
-
-
+  // ============ FUNGSI UTAMA ============
   const fetchData = async () => {
     try {
       const [categoriesRes, itemsRes] = await Promise.all([
@@ -80,61 +55,104 @@ useEffect(() => {
   };
 
   const fetchChangelog = async () => {
-  try {
-    setLoadingChangelog(true);
-    
-    const timestamp = Date.now();
-    const response = await fetch(`/api/changelog?_=${timestamp}`, {
-      cache: 'no-store',
-      headers: { 'Cache-Control': 'no-cache' }
-    });
-    
-    const result = await response.json();
-    
-    if (result.data && result.data !== 'Belum ada changelog') {
-      setChangelog(result.data);
-    } else {
-      setChangelog('Belum ada changelog');
+    try {
+      setLoadingChangelog(true);
+      const timestamp = Date.now();
+      const response = await fetch(`/api/changelog?_=${timestamp}`, {
+        cache: 'no-store',
+        headers: { 'Cache-Control': 'no-cache' }
+      });
+      
+      const result = await response.json();
+      
+      if (result.data && result.data !== 'Belum ada changelog') {
+        setChangelog(result.data);
+      } else {
+        setChangelog('Belum ada changelog');
+      }
+    } catch (error) {
+      console.error('Error fetching changelog:', error);
+      setChangelog('Error loading changelog');
+    } finally {
+      setLoadingChangelog(false);
     }
-    
-  } catch (error) {
-    console.error('Error fetching changelog:', error);
-    setChangelog('Error loading changelog');
-  } finally {
-    setLoadingChangelog(false);
-  }
-};
+  };
 
+  // ============ USE EFFECT ============
   useEffect(() => {
-    fetchData();
-    fetchChangelog();
+    // HAPUS bagian supabase real-time karena tidak didefinisikan
+    // Atau jika ingin pakai, import supabase dulu
+    // Untuk sekarang, cukup load data awal saja
+    
+    const loadInitialData = async () => {
+      try {
+        await Promise.all([
+          fetchData(),
+          fetchChangelog()
+        ]);
+      } catch (error) {
+        console.error('Error loading initial data:', error);
+      }
+    };
+
+    loadInitialData();
+
+    // Cleanup function
+    return () => {
+      console.log('Component cleanup');
+    };
   }, []);
 
+  // ============ HANDLERS ============
+  // FIX: Tambah fungsi handleAddCategory yang hilang
   const handleAddCategory = async (e) => {
     e.preventDefault();
-    const name = e.target.elements.name.value.trim();
-    if (!name) return;
+    const form = e.target;
+    const formData = new FormData(form);
+    const name = formData.get('name');
+    
+    if (!name || !name.trim()) {
+      setShowToast({
+        message: 'Nama kategori harus diisi',
+        type: 'error'
+      });
+      return;
+    }
 
     try {
       const response = await fetch('/api/categories', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name })
+        body: JSON.stringify({ name: name.trim() })
       });
       
       if (response.ok) {
-        e.target.reset();
-        fetchData();
+        form.reset();
+        await Promise.all([
+          fetchData(),
+          fetchChangelog()
+        ]);
+        setShowToast({
+          message: 'Adding new categories success',
+          type: 'success'
+        });
       }
     } catch (error) {
       console.error('Error adding category:', error);
+      setShowToast({
+        message: 'Failed to add new categories',
+        type: 'error'
+      });
     }
   };
 
   const handleAddItem = async (e) => {
     e.preventDefault();
     if (!formData.title.trim() || !formData.category_id) {
-      alert('Judul dan kategori harus diisi');
+      setShowToast({
+        message: 'Judul dan kategori harus diisi',
+        type: 'error'
+      });
       return;
     }
 
@@ -155,83 +173,105 @@ useEffect(() => {
       if (response.ok) {
         setFormData({ title: '', category_id: '', type: 'bug', image: null });
         if (fileInputRef.current) fileInputRef.current.value = '';
-        fetchData();
-        fetchChangelog();
+        await Promise.all([
+          fetchData(),
+          fetchChangelog()
+        ]);
+        setShowToast({
+          message: 'Adding new item success',
+          type: 'success'
+        });
       }
     } catch (error) {
       console.error('Error adding item:', error);
+      setShowToast({
+        message: 'Failed to add new item',
+        type: 'error'
+      });
     }
   };
 
-  // Hapus item
-const handleDeleteItem = async (itemId) => {
-  if (!confirm('Yakin ingin menghapus item ini?')) return;
-  
-  try {
-    // Tampilkan loading
-    setDeletingItem(itemId);
+  const handleDeleteItem = async (itemId) => {
+    if (!confirm('Yakin ingin menghapus item ini?')) return;
     
-    await fetch(`/api/items/${itemId}`, {
-      method: 'DELETE',
-      headers: { 'Cache-Control': 'no-cache' }
-    });
-    
-    // Refresh SEMUA data
-    await Promise.all([
-      fetchData(),
-      fetchChangelog() // Pastikan changelog juga refresh
-    ]);
-    
-    // Show success message
-    setShowToast({
-      message: 'Item berhasil dihapus',
-      type: 'success'
-    });
-    
-  } catch (error) {
-    console.error('Error deleting item:', error);
-    setShowToast({
-      message: 'Gagal menghapus item',
-      type: 'error'
-    });
-  } finally {
-    setDeletingItem(null);
-  }
-};
-
-// Update status
-const handleStatusChange = async (itemId, newStatus) => {
-  try {
-    const response = await fetch(`/api/items/${itemId}`, {
-      method: 'PATCH',
-      headers: { 
-        'Content-Type': 'application/json',
-        'Cache-Control': 'no-cache'
-      },
-      body: JSON.stringify({ status: newStatus })
-    });
-    
-    if (response.ok) {
-      // Jika status berubah ke/from 'done', refresh changelog
+    try {
+      setDeletingItem(itemId);
+      
+      await fetch(`/api/items/${itemId}`, {
+        method: 'DELETE',
+        headers: { 'Cache-Control': 'no-cache' }
+      });
+      
       await Promise.all([
         fetchData(),
-        fetchChangelog() // Refresh changelog
+        fetchChangelog()
       ]);
+      
+      setShowToast({
+        message: 'Item berhasil dihapus',
+        type: 'success'
+      });
+      
+    } catch (error) {
+      console.error('Error deleting item:', error);
+      setShowToast({
+        message: 'Gagal menghapus item',
+        type: 'error'
+      });
+    } finally {
+      setDeletingItem(null);
     }
-  } catch (error) {
-    console.error('Error updating status:', error);
-  }
-};
+  };
+
+  const handleStatusChange = async (itemId, newStatus) => {
+    try {
+      const response = await fetch(`/api/items/${itemId}`, {
+        method: 'PATCH',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Cache-Control': 'no-cache'
+        },
+        body: JSON.stringify({ status: newStatus })
+      });
+      
+      if (response.ok) {
+        await Promise.all([
+          fetchData(),
+          fetchChangelog()
+        ]);
+        setShowToast({
+          message: `Status berhasil diubah ke "${newStatus}"`,
+          type: 'success'
+        });
+      }
+    } catch (error) {
+      console.error('Error updating status:', error);
+      setShowToast({
+        message: 'Gagal mengubah status',
+        type: 'error'
+      });
+    }
+  };
 
   const handleDeleteCategory = async (categoryId) => {
     if (!confirm('Hapus kategori akan menghapus semua item di dalamnya. Yakin?')) return;
     
     try {
       await fetch(`/api/categories/${categoryId}`, { method: 'DELETE' });
-      fetchData();
-      fetchChangelog();
+      await Promise.all([
+        fetchData(),
+        fetchChangelog()
+      ]);
+      setShowToast({
+        message: 'Kategori berhasil dihapus',
+        type: 'success'
+      });
     } catch (error) {
       console.error('Error deleting category:', error);
+      setShowToast({
+        message: 'Gagal menghapus kategori',
+        type: 'error'
+      });
     }
   };
 
@@ -239,7 +279,10 @@ const handleStatusChange = async (itemId, newStatus) => {
     const file = e.target.files[0];
     if (file) {
       if (file.size > 5 * 1024 * 1024) {
-        alert('Ukuran file maksimal 5MB');
+        setShowToast({
+          message: 'Ukuran file maksimal 5MB',
+          type: 'error'
+        });
         return;
       }
       setFormData({ ...formData, image: file });
@@ -247,6 +290,14 @@ const handleStatusChange = async (itemId, newStatus) => {
   };
 
   const downloadChangelog = () => {
+    if (!changelog || changelog === 'Belum ada changelog') {
+      setShowToast({
+        message: 'Tidak ada changelog untuk diunduh',
+        type: 'error'
+      });
+      return;
+    }
+    
     const blob = new Blob([changelog], { type: 'text/plain' });
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -258,19 +309,19 @@ const handleStatusChange = async (itemId, newStatus) => {
     window.URL.revokeObjectURL(url);
   };
 
+  const toggleTheme = () => {
+    setTheme(theme === 'dark' ? 'light' : 'dark');
+  };
+
   const getFilteredItems = () => {
     if (activeTab === 'all') return items;
     return items.filter(item => item.type === activeTab);
   };
 
-  const toggleTheme = () => {
-    setTheme(theme === 'dark' ? 'light' : 'dark');
-  };
-
   const getTypeLabel = (type) => {
     const labels = {
       bug: 'Bug',
-      feature_update: 'Featre Update',
+      feature_update: 'Feature Update',
       new_feature: 'Feature Add'
     };
     return labels[type] || type;
@@ -287,13 +338,14 @@ const handleStatusChange = async (itemId, newStatus) => {
 
   const getStatusColor = (status) => {
     const colors = {
-      belum: 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200',
-      proses: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200',
+      pending: 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200',
+      process: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200',
       done: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'
     };
     return colors[status] || 'bg-gray-100 text-gray-800';
   };
 
+  // ============ RENDER ============
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -304,6 +356,7 @@ const handleStatusChange = async (itemId, newStatus) => {
 
   return (
     <div className="min-h-screen bg-background text-foreground">
+      {/* Image Preview Modal */}
       {showImagePreview && (
         <div 
           className="image-preview-container"
@@ -318,29 +371,10 @@ const handleStatusChange = async (itemId, newStatus) => {
             </button>
             <img src={showImagePreview} alt="Preview" />
           </div>
-     //Toast Notification
-        // Tambah di dalam return(), sebelum closing div:
-{showToast && (
-  <div className={`fixed bottom-4 right-4 px-6 py-3 rounded-lg shadow-lg ${
-    showToast.type === 'success' ? 'bg-green-500 text-white' : 'bg-red-500 text-white'
-  }`}>
-    <div className="flex items-center gap-2">
-      {showToast.type === 'success' ? '✓' : '✗'}
-      <span>{showToast.message}</span>
-      <button 
-        onClick={() => setShowToast(null)}
-        className="ml-4 text-white hover:text-gray-200"
-      >
-        ✕
-      </button>
-    </div>
-  </div>
-)}
-
-
         </div>
       )}
 
+      {/* Changelog Modal */}
       {showChangelog && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
           <div className="bg-card border rounded-lg max-w-2xl w-full max-h-[80vh] overflow-hidden">
@@ -371,8 +405,50 @@ const handleStatusChange = async (itemId, newStatus) => {
         </div>
       )}
 
+      {/* Toast Notification - DIPINDAHKAN ke luar modal */}
+      {showToast && (
+        <div className={`fixed bottom-4 right-4 px-6 py-3 rounded-lg shadow-lg z-50 ${
+          showToast.type === 'success' ? 'bg-green-500 text-white' : 'bg-red-500 text-white'
+        }`}>
+          <div className="flex items-center gap-2">
+            {showToast.type === 'success' ? '✓' : '✗'}
+            <span>{showToast.message}</span>
+            <button 
+              onClick={() => setShowToast(null)}
+              className="ml-4 text-white hover:text-gray-200"
+            >
+              ✕
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Loading untuk changelog */}
+      {loadingChangelog && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-lg">
+            <div className="flex items-center gap-3">
+              <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-600"></div>
+              <span>Loading changelog...</span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Loading untuk delete */}
+      {deletingItem && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-lg">
+            <div className="flex items-center gap-3">
+              <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-red-600"></div>
+              <span>Deleting item...</span>
+            </div>
+          </div>
+        </div>
+      )}
+
       <header className="border-b">
-        <div className="max-w-7xl mx- auto px-4 py-4">
+        <div className="max-w-7xl mx-auto px-4 py-4"> {/* FIX: mx- auto menjadi mx-auto */}
           <div className="flex justify-between items-center">
             <div>
               <h1 className="text-2xl font-bold">Wishlist Manager</h1>
@@ -404,14 +480,16 @@ const handleStatusChange = async (itemId, newStatus) => {
 
       <main className="max-w-7xl mx-auto px-4 py-8">
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+          {/* Sidebar Kiri */}
           <div className="space-y-6">
+            {/* Form Tambah Kategori */}
             <div className="bg-card border rounded-lg p-6">
-              <h2 className="text-lg font-semibold mb-4">Tambah Kategori</h2>
+              <h2 className="text-lg font-semibold mb-4">Add New Categories</h2>
               <form onSubmit={handleAddCategory}>
                 <div className="space-y-3">
                   <input
                     name="name"
-                    placeholder="Nama kategori"
+                    placeholder="Name"
                     className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-ring"
                     required
                   />
@@ -419,12 +497,13 @@ const handleStatusChange = async (itemId, newStatus) => {
                     type="submit"
                     className="w-full px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90"
                   >
-                    Tambah Kategori
+                    Add Categories
                   </button>
                 </div>
               </form>
             </div>
 
+            {/* Form Tambah Item */}
             <div className="bg-card border rounded-lg p-6">
               <h2 className="text-lg font-semibold mb-4">Add New Item</h2>
               <form onSubmit={handleAddItem}>
@@ -502,6 +581,7 @@ const handleStatusChange = async (itemId, newStatus) => {
               </form>
             </div>
 
+            {/* Daftar Kategori */}
             <div className="bg-card border rounded-lg p-6">
               <h2 className="text-lg font-semibold mb-4">Categories ({categories.length})</h2>
               <div className="space-y-2">
@@ -520,7 +600,9 @@ const handleStatusChange = async (itemId, newStatus) => {
             </div>
           </div>
 
+          {/* Konten Utama */}
           <div className="lg:col-span-3">
+            {/* Tab Navigation */}
             <div className="bg-card border rounded-lg mb-6">
               <div className="flex border-b">
                 {['all', 'bug', 'feature_update', 'new_feature'].map((tab) => {
@@ -538,13 +620,14 @@ const handleStatusChange = async (itemId, newStatus) => {
                           : 'text-muted-foreground hover:text-foreground'
                       }`}
                     >
-                      {tab === 'all' ? 'Semua' : getTypeLabel(tab)} ({count})
+                      {tab === 'all' ? 'All' : getTypeLabel(tab)} ({count})
                     </button>
                   );
                 })}
               </div>
             </div>
 
+            {/* Daftar Items */}
             <div className="bg-card border rounded-lg p-6">
               <div className="flex justify-between items-center mb-6">
                 <h2 className="text-xl font-bold">
@@ -597,9 +680,9 @@ const handleStatusChange = async (itemId, newStatus) => {
                                 onChange={(e) => handleStatusChange(item.id, e.target.value)}
                                 className={`px-3 py-1 rounded-full text-sm font-medium ${getStatusColor(item.status)}`}
                               >
-                                <option value="belum">Belum</option>
-                                <option value="proses">Proses</option>
-                                <option value="done">Selesai</option>
+                                <option value="belum">Pending</option>
+                                <option value="proses">Process</option>
+                                <option value="done">Done/fixed</option>
                               </select>
                               <span className="text-sm text-muted-foreground">
                                 {new Date(item.created_at).toLocaleDateString('id-ID')}
